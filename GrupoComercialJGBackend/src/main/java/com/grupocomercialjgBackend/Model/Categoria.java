@@ -1,11 +1,16 @@
 package com.grupocomercialjgBackend.Model;
+
 import jakarta.persistence.*;
+
 @Entity
 @Table(name = "categoria")
 public class Categoria {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    private String grupo;
 
     private String nombre;
 
@@ -20,6 +25,14 @@ public class Categoria {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public String getGrupo() {
+        return grupo;
+    }
+
+    public void setGrupo(String grupo) {
+        this.grupo = grupo;
     }
 
     public String getNombre() {
