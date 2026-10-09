@@ -1,4 +1,6 @@
+
 package com.grupocomercialjgBackend.Model;
+
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -6,6 +8,7 @@ import lombok.Data;
 @Table(name = "productos")
 @Data
 public class Producto {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -20,11 +23,24 @@ public class Producto {
 
     private Integer stock;
 
+    // Descripción larga
+    @Column(name = "descripcion", columnDefinition = "TEXT")
     private String descripcion;
 
+    // Primera imagen del producto
+    @Column(name = "imagen", columnDefinition = "TEXT")
     private String imagen;
 
+    // Segunda imagen del producto
+    @Column(name = "imagen2", columnDefinition = "TEXT")
+    private String imagen2;
+
+    // Modelo del producto
     private String modelo;
+
+    // Especificaciones técnicas en formato de texto
+    @Column(name = "datos_tecnicos", columnDefinition = "TEXT")
+    private String datosTecnicos;
 
     public Producto() {
     }
@@ -93,6 +109,14 @@ public class Producto {
         this.imagen = imagen;
     }
 
+    public String getImagen2() {
+        return imagen2;
+    }
+
+    public void setImagen2(String imagen2) {
+        this.imagen2 = imagen2;
+    }
+
     public String getModelo() {
         return modelo;
     }
@@ -100,5 +124,12 @@ public class Producto {
     public void setModelo(String modelo) {
         this.modelo = modelo;
     }
-}
 
+    public String getDatosTecnicos() {
+        return datosTecnicos;
+    }
+
+    public void setDatosTecnicos(String datosTecnicos) {
+        this.datosTecnicos = datosTecnicos;
+    }
+}
