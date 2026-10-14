@@ -1,4 +1,6 @@
+
 package com.grupocomercialjgBackend.Model;
+
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,6 +15,17 @@ public class Pedido {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // TOKEN PRIVADO DE SEGUIMIENTO
+    // Solo guardamos el hash, nunca el token original.
+    @Column(
+        name = "token_seguimiento_hash",
+        length = 64,
+        unique = true
+    )
+    private String tokenSeguimientoHash;
+
+    // DATOS DEL CLIENTE
+
     @Column(nullable = false)
     private String nombreCliente;
 
@@ -21,6 +34,8 @@ public class Pedido {
 
     private String correoCliente;
 
+    // DATOS DE ENTREGA
+
     @Column(nullable = false)
     private String direccionEntrega;
 
@@ -28,6 +43,12 @@ public class Pedido {
     private String provincia;
     private String distrito;
     private String referencia;
+
+    // SHALOM, EMTRAFESA, OLVA, RECOJO
+    @Column(length = 20)
+    private String metodoEntrega;
+
+    // IMPORTES
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
@@ -38,21 +59,46 @@ public class Pedido {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal total = BigDecimal.ZERO;
 
-    @Column(nullable = false)
+    // ESTADOS
+
+    // PENDIENTE, PREPARANDO, LISTO_RECOJO,
+    // ENVIADO, ENTREGADO, CANCELADO
+    @Column(nullable = false, length = 30)
     private String estadoPedido = "PENDIENTE";
 
-    @Column(nullable = false)
+    // PENDIENTE, EN_REVISION, APROBADO, RECHAZADO
+    @Column(nullable = false, length = 30)
     private String estadoPago = "PENDIENTE";
 
+    // YAPE, PLIN, BCP, BBVA, TARJETA
+    @Column(length = 20)
     private String metodoPago;
 
+    // DATOS DE PAGO
+
+    // Campo anterior conservado por compatibilidad
     @Column(unique = true)
     private String referenciaPago;
+
+    // Numero declarado por el cliente
+    @Column(length = 100)
+    private String numeroOperacionPago;
+
+    private LocalDateTime fechaReportePago;
+
+    private LocalDateTime fechaVerificacionPago;
+
+    @Column(length = 500)
+    private String observacionPago;
+
+    // FECHAS
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime fechaPedido;
 
     private LocalDateTime fechaPago;
+
+    // DETALLES DEL PEDIDO
 
     @OneToMany(
         mappedBy = "pedido",
@@ -81,12 +127,22 @@ public class Pedido {
         detalle.setPedido(null);
     }
 
+    // GETTERS Y SETTERS
+
     public Long getId() {
         return id;
     }
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public String getTokenSeguimientoHash() {
+        return tokenSeguimientoHash;
+    }
+
+    public void setTokenSeguimientoHash(String tokenSeguimientoHash) {
+        this.tokenSeguimientoHash = tokenSeguimientoHash;
     }
 
     public String getNombreCliente() {
@@ -153,6 +209,14 @@ public class Pedido {
         this.referencia = referencia;
     }
 
+    public String getMetodoEntrega() {
+        return metodoEntrega;
+    }
+
+    public void setMetodoEntrega(String metodoEntrega) {
+        this.metodoEntrega = metodoEntrega;
+    }
+
     public BigDecimal getSubtotal() {
         return subtotal;
     }
@@ -207,6 +271,40 @@ public class Pedido {
 
     public void setReferenciaPago(String referenciaPago) {
         this.referenciaPago = referenciaPago;
+    }
+
+    public String getNumeroOperacionPago() {
+        return numeroOperacionPago;
+    }
+
+    public void setNumeroOperacionPago(String numeroOperacionPago) {
+        this.numeroOperacionPago = numeroOperacionPago;
+    }
+
+    public LocalDateTime getFechaReportePago() {
+        return fechaReportePago;
+    }
+
+    public void setFechaReportePago(LocalDateTime fechaReportePago) {
+        this.fechaReportePago = fechaReportePago;
+    }
+
+    public LocalDateTime getFechaVerificacionPago() {
+        return fechaVerificacionPago;
+    }
+
+    public void setFechaVerificacionPago(
+            LocalDateTime fechaVerificacionPago
+    ) {
+        this.fechaVerificacionPago = fechaVerificacionPago;
+    }
+
+    public String getObservacionPago() {
+        return observacionPago;
+    }
+
+    public void setObservacionPago(String observacionPago) {
+        this.observacionPago = observacionPago;
     }
 
     public LocalDateTime getFechaPedido() {

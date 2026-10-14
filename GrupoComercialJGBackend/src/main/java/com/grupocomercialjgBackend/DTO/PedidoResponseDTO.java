@@ -1,3 +1,4 @@
+
 package com.grupocomercialjgBackend.DTO;
 
 import java.math.BigDecimal;
@@ -14,6 +15,7 @@ public record PedidoResponseDTO(
         String provincia,
         String distrito,
         String referencia,
+        String metodoEntrega,
         BigDecimal subtotal,
         BigDecimal costoEnvio,
         BigDecimal total,

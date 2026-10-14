@@ -1,3 +1,4 @@
+
 package com.grupocomercialjgBackend.DTO;
 
 import java.util.List;
@@ -11,6 +12,8 @@ public record PedidoRequestDTO(
         String provincia,
         String distrito,
         String referencia,
+        String metodoEntrega,
+        String metodoPago,
         List<ItemPedidoRequestDTO> detalles
 ) {
     public record ItemPedidoRequestDTO(

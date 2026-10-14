@@ -13,17 +13,17 @@ import java.util.Optional;
 @Repository
 public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
-    // Obtener pedidos con sus detalles
+    // Listar pedidos con sus detalles
     @Override
     @EntityGraph(attributePaths = {"detalles"})
     List<Pedido> findAll();
 
-    // Obtener un pedido con sus detalles
+    // Buscar pedido por ID
     @Override
     @EntityGraph(attributePaths = {"detalles"})
     Optional<Pedido> findById(Long id);
 
-    // Obtener los pedidos recientes con sus detalles
+    // Listar pedidos recientes
     @EntityGraph(attributePaths = {"detalles"})
     List<Pedido> findAllByOrderByFechaPedidoDesc();
 
@@ -37,5 +37,11 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     @EntityGraph(attributePaths = {"detalles"})
     List<Pedido> findByEstadoPagoOrderByFechaPedidoDesc(
             String estadoPago
+    );
+
+    // Buscar pedido mediante el hash del token privado
+    @EntityGraph(attributePaths = {"detalles"})
+    Optional<Pedido> findByTokenSeguimientoHash(
+            String tokenSeguimientoHash
     );
 }
