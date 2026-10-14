@@ -105,10 +105,23 @@ public class SecurityConfig {
                     "/api/auth/login"
                 ).permitAll()
 
-                // Consultar y cerrar sesion
+                // Los clientes pueden registrar pedidos
+                // sin iniciar sesion, pero con CSRF obligatorio
+                .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/pedidos"
+                ).permitAll()
+
+                // Consultar y cerrar sesion administrativa
                 .requestMatchers(
                     "/api/auth/me",
                     "/api/auth/logout"
+                ).hasRole("ADMIN")
+
+                // Consultar pedidos: solo administradores
+                .requestMatchers(
+                    "/api/pedidos",
+                    "/api/pedidos/**"
                 ).hasRole("ADMIN")
 
                 // Todas las demas operaciones API
