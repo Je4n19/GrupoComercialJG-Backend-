@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -26,13 +27,22 @@ import java.util.Set;
 @Service
 public class PedidoService {
 
+    // ========================================
+    // METODOS DE ENTREGA
+    // ========================================
+
     private static final Set<String> METODOS_ENTREGA =
             Set.of("SHALOM", "EMTRAFESA", "OLVA", "RECOJO");
 
-    // Conservamos todos los metodos.
-    // BCP, BBVA y TARJETA todavia no procesan pagos.
+    // Se conservan los metodos existentes.
+    // La disponibilidad de cada pago se
+    // controla tambien desde el frontend.
     private static final Set<String> METODOS_PAGO =
             Set.of("TARJETA", "YAPE", "PLIN", "BCP", "BBVA");
+
+    // ========================================
+    // DEPENDENCIAS
+    // ========================================
 
     private final PedidoRepository pedidoRepository;
     private final ProductoRepository productoRepository;
@@ -62,6 +72,7 @@ public class PedidoService {
 
     @Transactional(readOnly = true)
     public Pedido obtenerPorId(Long id) {
+
         return pedidoRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
@@ -71,8 +82,18 @@ public class PedidoService {
 
     @Transactional(readOnly = true)
     public List<Pedido> listarPorEstado(String estado) {
+
+        if (estado == null || estado.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El estado es obligatorio"
+            );
+        }
+
         return pedidoRepository
-                .findByEstadoPedidoOrderByFechaPedidoDesc(estado);
+                .findByEstadoPedidoOrderByFechaPedidoDesc(
+                        estado.trim().toUpperCase(Locale.ROOT)
+                );
     }
 
     // ========================================
@@ -84,6 +105,7 @@ public class PedidoService {
             Pedido datos,
             String tokenSeguimiento
     ) {
+
         String hash = tokenPedidoService.generarHash(
                 tokenSeguimiento
         );
@@ -131,34 +153,47 @@ public class PedidoService {
                 "Metodo de pago"
         );
 
+        // ========================================
+        // VALIDAR DATOS DE ENTREGA
+        // ========================================
+
         if (!metodoEntrega.equals("RECOJO")) {
+
             validarTexto(
                     datos.getDepartamento(),
                     "Departamento"
             );
+
             validarTexto(
                     datos.getProvincia(),
                     "Provincia"
             );
+
             validarTexto(
                     datos.getDistrito(),
                     "Distrito"
             );
+
             validarTexto(
                     datos.getDireccionEntrega(),
                     "Direccion de entrega"
             );
         }
 
+        // ========================================
+        // VALIDAR ARTICULOS
+        // ========================================
+
         if (datos.getDetalles() == null
                 || datos.getDetalles().isEmpty()) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "El pedido debe contener al menos un articulo"
             );
         }
 
-        // Agrupar cantidades de articulos repetidos
+        // Agrupar articulos repetidos.
         Map<String, Integer> cantidades = new HashMap<>();
 
         for (DetallePedido item : datos.getDetalles()) {
@@ -182,6 +217,7 @@ public class PedidoService {
 
             if (!tipo.equals("PRODUCTO")
                     && !tipo.equals("REPUESTO")) {
+
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "Tipo de articulo no valido: " + tipo
@@ -191,12 +227,15 @@ public class PedidoService {
             String clave = tipo + "-" + item.getIdArticulo();
 
             try {
+
                 cantidades.merge(
                         clave,
                         item.getCantidad(),
                         Math::addExact
                 );
+
             } catch (ArithmeticException ex) {
+
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "Cantidad de articulos demasiado grande"
@@ -204,8 +243,13 @@ public class PedidoService {
             }
         }
 
-        // Crear una entidad nueva.
-        // No confiar en precios ni estados enviados por React.
+        // ========================================
+        // CREAR PEDIDO SEGURO
+        // ========================================
+
+        // No confiar en precios, importes,
+        // estados ni cotizaciones enviadas
+        // por el navegador.
         Pedido pedido = new Pedido();
 
         pedido.setNombreCliente(
@@ -216,7 +260,9 @@ public class PedidoService {
                 datos.getTelefonoCliente().trim()
         );
 
-        pedido.setCorreoCliente(datos.getCorreoCliente());
+        pedido.setCorreoCliente(
+                datos.getCorreoCliente()
+        );
 
         pedido.setMetodoEntrega(metodoEntrega);
         pedido.setMetodoPago(metodoPago);
@@ -249,7 +295,10 @@ public class PedidoService {
 
         pedido.setReferencia(datos.getReferencia());
 
-        // Estados iniciales controlados por backend
+        // ========================================
+        // ESTADOS INICIALES
+        // ========================================
+
         pedido.setEstadoPedido("PENDIENTE");
         pedido.setEstadoPago("PENDIENTE");
 
@@ -259,6 +308,33 @@ public class PedidoService {
         pedido.setFechaVerificacionPago(null);
         pedido.setObservacionPago(null);
         pedido.setFechaPago(null);
+
+        // ========================================
+        // CONFIGURAR FLETE CONTRA ENTREGA
+        // ========================================
+
+        if (metodoEntrega.equals("RECOJO")) {
+
+            // El cliente recoge en J&G.
+            // No existe flete de agencia.
+            pedido.setModalidadPagoFlete("NO_APLICA");
+            pedido.setEstadoCotizacionFlete("NO_APLICA");
+            pedido.setCostoEnvio(BigDecimal.ZERO);
+
+        } else {
+
+            // El cliente paga el flete
+            // directamente a la agencia.
+            pedido.setModalidadPagoFlete("CONTRA_ENTREGA");
+            pedido.setEstadoCotizacionFlete("PENDIENTE");
+
+            // El flete aun no esta cotizado.
+            // Cero NO significa envio gratuito.
+            pedido.setCostoEnvio(BigDecimal.ZERO);
+        }
+
+        pedido.setFechaCotizacionFlete(null);
+        pedido.setObservacionFlete(null);
 
         BigDecimal subtotalGeneral = BigDecimal.ZERO;
 
@@ -310,6 +386,7 @@ public class PedidoService {
             }
 
             if (stock == null || stock < cantidad) {
+
                 throw new ResponseStatusException(
                         HttpStatus.CONFLICT,
                         "Stock insuficiente para: " + nombre
@@ -319,6 +396,7 @@ public class PedidoService {
             if (precio == null
                     || !Double.isFinite(precio)
                     || precio < 0) {
+
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "Precio invalido para: " + nombre
@@ -349,20 +427,132 @@ public class PedidoService {
         }
 
         // ========================================
-        // CALCULAR IMPORTE DEL PEDIDO
+        // CALCULAR IMPORTES
         // ========================================
 
-        // RECOJO: no hay costo de envio.
-        // AGENCIAS: el costo todavia esta pendiente
-        // de cotizacion. Cero NO significa envio gratis.
-        BigDecimal costoEnvio = BigDecimal.ZERO;
-
         pedido.setSubtotal(subtotalGeneral);
-        pedido.setCostoEnvio(costoEnvio);
-        pedido.setTotal(subtotalGeneral.add(costoEnvio));
 
-        // El stock se valida, pero aun NO se reserva
-        // ni se descuenta. Se implementara despues.
+        // El importe a pagar a J&G
+        // es solamente el de los productos.
+        //
+        // El costoEnvio se informara
+        // por separado cuando el administrador
+        // registre la cotizacion.
+        pedido.setTotal(subtotalGeneral);
+
+        // El stock se valida, pero todavia
+        // no se reserva ni se descuenta.
+        return pedidoRepository.save(pedido);
+    }
+
+    // ========================================
+    // REGISTRAR COTIZACION DEL FLETE
+    // SOLO DEBE INVOCARSE DESDE ADMIN
+    // ========================================
+
+    @Transactional
+    public Pedido actualizarCotizacionFlete(
+            Long pedidoId,
+            BigDecimal costoFlete,
+            String estadoCotizacion,
+            String observacion
+    ) {
+
+        Pedido pedido = pedidoRepository.findById(pedidoId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Pedido no encontrado con ID: " + pedidoId
+                ));
+
+        // Solo pedidos enviados por agencia.
+        if ("RECOJO".equalsIgnoreCase(
+                pedido.getMetodoEntrega()
+        )) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Los pedidos con recojo en tienda no tienen flete"
+            );
+        }
+
+        if (!METODOS_ENTREGA.contains(
+                String.valueOf(pedido.getMetodoEntrega())
+                        .toUpperCase(Locale.ROOT)
+        )) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Metodo de entrega no valido"
+            );
+        }
+
+        if ("CANCELADO".equalsIgnoreCase(
+                pedido.getEstadoPedido()
+        )) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede cotizar un pedido cancelado"
+            );
+        }
+
+        if (costoFlete == null
+                || costoFlete.signum() <= 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El costo del flete debe ser mayor que cero"
+            );
+        }
+
+        if (costoFlete.scale() > 2
+                || costoFlete.compareTo(
+                        new BigDecimal("9999999999.99")
+                ) > 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El importe del flete no es valido"
+            );
+        }
+
+        String estado = validarOpcion(
+                estadoCotizacion,
+                Set.of("ESTIMADO", "CONFIRMADO"),
+                "Estado de cotizacion"
+        );
+
+        if (observacion != null
+                && observacion.length() > 500) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "La observacion no puede superar 500 caracteres"
+            );
+        }
+
+        pedido.setCostoEnvio(
+                costoFlete.setScale(2, RoundingMode.UNNECESSARY)
+        );
+
+        pedido.setModalidadPagoFlete("CONTRA_ENTREGA");
+        pedido.setEstadoCotizacionFlete(estado);
+        pedido.setFechaCotizacionFlete(LocalDateTime.now());
+
+        pedido.setObservacionFlete(
+                observacion == null
+                        ? null
+                        : observacion.trim()
+        );
+
+        // MUY IMPORTANTE:
+        // El flete no forma parte del
+        // dinero que recibe J&G.
+        //
+        // Aunque el flete cambie,
+        // el total de productos no cambia.
+        pedido.setTotal(pedido.getSubtotal());
+
         return pedidoRepository.save(pedido);
     }
 
@@ -371,7 +561,9 @@ public class PedidoService {
     // ========================================
 
     private void validarTexto(String valor, String campo) {
+
         if (valor == null || valor.trim().isEmpty()) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     campo + " es obligatorio"
@@ -386,6 +578,7 @@ public class PedidoService {
     ) {
 
         if (valor == null) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     campo + " es obligatorio"
@@ -396,6 +589,7 @@ public class PedidoService {
                 .toUpperCase(Locale.ROOT);
 
         if (!permitidos.contains(normalizado)) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     campo + " no valido"

@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 
@@ -36,7 +37,17 @@ public class PedidoController {
     }
 
     // ========================================
-    // REGISTRAR NUEVO PEDIDO
+    // DTO PARA COTIZAR FLETE
+    // ========================================
+
+    public record CotizacionFleteRequest(
+            BigDecimal costoFlete,
+            String estadoCotizacion,
+            String observacion
+    ) {}
+
+    // ========================================
+    // REGISTRAR NUEVO PEDIDO - PUBLICO
     // ========================================
 
     @PostMapping
@@ -53,23 +64,23 @@ public class PedidoController {
 
         Pedido datos = new Pedido();
 
-        // Datos del cliente
+        // DATOS DEL CLIENTE
         datos.setNombreCliente(request.nombreCliente());
         datos.setTelefonoCliente(request.telefonoCliente());
         datos.setCorreoCliente(request.correoCliente());
 
-        // Datos de entrega
+        // DATOS DE ENTREGA
         datos.setDireccionEntrega(request.direccionEntrega());
         datos.setDepartamento(request.departamento());
         datos.setProvincia(request.provincia());
         datos.setDistrito(request.distrito());
         datos.setReferencia(request.referencia());
 
-        // Metodo de entrega y pago
+        // METODOS DE ENTREGA Y PAGO
         datos.setMetodoEntrega(request.metodoEntrega());
         datos.setMetodoPago(request.metodoPago());
 
-        // Articulos del pedido
+        // ARTICULOS DEL PEDIDO
         if (request.detalles() != null) {
 
             for (PedidoRequestDTO.ItemPedidoRequestDTO item
@@ -92,18 +103,17 @@ public class PedidoController {
             }
         }
 
-        // Generar token privado para este pedido
+        // GENERAR TOKEN PRIVADO
         String tokenSeguimiento =
                 tokenPedidoService.generarToken();
 
-        // Registrar el pedido con el hash del token
+        // REGISTRAR PEDIDO
         Pedido nuevoPedido = pedidoService.registrarConToken(
                 datos,
                 tokenSeguimiento
         );
 
-        // El token original solo se devuelve
-        // en esta respuesta de creacion.
+        // DEVOLVER TOKEN SOLO AL CREAR
         PedidoCreadoDTO respuesta = new PedidoCreadoDTO(
                 convertirPedido(nuevoPedido),
                 tokenSeguimiento
@@ -131,6 +141,33 @@ public class PedidoController {
     }
 
     // ========================================
+    // FILTRAR PEDIDOS POR ESTADO - ADMIN
+    // ========================================
+
+    @GetMapping("/estado/{estado}")
+    public ResponseEntity<List<PedidoResponseDTO>> listarPorEstado(
+            @PathVariable String estado
+    ) {
+
+        if (estado == null || estado.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El estado es obligatorio"
+            );
+        }
+
+        List<PedidoResponseDTO> pedidos = pedidoService
+                .listarPorEstado(
+                        estado.toUpperCase(Locale.ROOT)
+                )
+                .stream()
+                .map(this::convertirPedido)
+                .toList();
+
+        return ResponseEntity.ok(pedidos);
+    }
+
+    // ========================================
     // OBTENER PEDIDO POR ID - ADMIN
     // ========================================
 
@@ -145,23 +182,33 @@ public class PedidoController {
     }
 
     // ========================================
-    // FILTRAR PEDIDOS POR ESTADO - ADMIN
+    // ACTUALIZAR COTIZACION DE FLETE - ADMIN
     // ========================================
 
-    @GetMapping("/estado/{estado}")
-    public ResponseEntity<List<PedidoResponseDTO>> listarPorEstado(
-            @PathVariable String estado
+    @PatchMapping("/{id}/flete")
+    public ResponseEntity<PedidoResponseDTO> actualizarFlete(
+            @PathVariable Long id,
+            @RequestBody CotizacionFleteRequest request
     ) {
 
-        List<PedidoResponseDTO> pedidos = pedidoService
-                .listarPorEstado(
-                        estado.toUpperCase(Locale.ROOT)
-                )
-                .stream()
-                .map(this::convertirPedido)
-                .toList();
+        if (request == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Los datos del flete son obligatorios"
+            );
+        }
 
-        return ResponseEntity.ok(pedidos);
+        Pedido pedidoActualizado =
+                pedidoService.actualizarCotizacionFlete(
+                        id,
+                        request.costoFlete(),
+                        request.estadoCotizacion(),
+                        request.observacion()
+                );
+
+        return ResponseEntity.ok(
+                convertirPedido(pedidoActualizado)
+        );
     }
 
     // ========================================
@@ -176,24 +223,46 @@ public class PedidoController {
                 .toList();
 
         return new PedidoResponseDTO(
+
+                // IDENTIFICACION
                 pedido.getId(),
+
+                // DATOS DEL CLIENTE
                 pedido.getNombreCliente(),
                 pedido.getTelefonoCliente(),
                 pedido.getCorreoCliente(),
+
+                // DATOS DE ENTREGA
                 pedido.getDireccionEntrega(),
                 pedido.getDepartamento(),
                 pedido.getProvincia(),
                 pedido.getDistrito(),
                 pedido.getReferencia(),
                 pedido.getMetodoEntrega(),
+
+                // IMPORTES
                 pedido.getSubtotal(),
                 pedido.getCostoEnvio(),
                 pedido.getTotal(),
+
+                // INFORMACION DEL FLETE
+                pedido.getModalidadPagoFlete(),
+                pedido.getEstadoCotizacionFlete(),
+                pedido.getFechaCotizacionFlete(),
+                pedido.getObservacionFlete(),
+
+                // ESTADOS
                 pedido.getEstadoPedido(),
                 pedido.getEstadoPago(),
+
+                // METODO DE PAGO
                 pedido.getMetodoPago(),
+
+                // FECHAS
                 pedido.getFechaPedido(),
                 pedido.getFechaPago(),
+
+                // DETALLES
                 detalles
         );
     }

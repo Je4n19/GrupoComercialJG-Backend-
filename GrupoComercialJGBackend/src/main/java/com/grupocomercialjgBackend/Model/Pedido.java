@@ -15,8 +15,10 @@ public class Pedido {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // ========================================
     // TOKEN PRIVADO DE SEGUIMIENTO
-    // Solo guardamos el hash, nunca el token original.
+    // ========================================
+
     @Column(
         name = "token_seguimiento_hash",
         length = 64,
@@ -24,7 +26,9 @@ public class Pedido {
     )
     private String tokenSeguimientoHash;
 
+    // ========================================
     // DATOS DEL CLIENTE
+    // ========================================
 
     @Column(nullable = false)
     private String nombreCliente;
@@ -34,7 +38,9 @@ public class Pedido {
 
     private String correoCliente;
 
+    // ========================================
     // DATOS DE ENTREGA
+    // ========================================
 
     @Column(nullable = false)
     private String direccionEntrega;
@@ -48,25 +54,73 @@ public class Pedido {
     @Column(length = 20)
     private String metodoEntrega;
 
-    // IMPORTES
+    // ========================================
+    // IMPORTES DE PRODUCTOS
+    // ========================================
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
+    // Se conserva por compatibilidad con
+    // el backend y los pedidos existentes.
+    //
+    // Para envios contra entrega representa
+    // el flete informado por la agencia,
+    // NO un cobro a favor de J&G.
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal costoEnvio = BigDecimal.ZERO;
 
+    // Total que el cliente paga a J&G.
+    // NO incluye flete contra entrega.
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal total = BigDecimal.ZERO;
 
-    // ESTADOS
+    // ========================================
+    // NUEVA GESTION DEL FLETE
+    // ========================================
+
+    // CONTRA_ENTREGA:
+    // El cliente paga el flete directamente
+    // a la agencia cuando recoge su pedido.
+    //
+    // NO_APLICA:
+    // Recojo en tienda.
+    @Column(name = "modalidad_pago_flete", length = 30)
+    private String modalidadPagoFlete;
+
+    // PENDIENTE:
+    // Aun no se conoce el importe.
+    //
+    // ESTIMADO:
+    // J&G ingreso un importe aproximado.
+    //
+    // CONFIRMADO:
+    // La agencia confirmo el importe.
+    //
+    // NO_APLICA:
+    // Recojo en tienda.
+    @Column(name = "estado_cotizacion_flete", length = 20)
+    private String estadoCotizacionFlete;
+
+    // Fecha de la ultima cotizacion.
+    @Column(name = "fecha_cotizacion_flete")
+    private LocalDateTime fechaCotizacionFlete;
+
+    // Informacion adicional de la cotizacion.
+    @Column(name = "observacion_flete", length = 500)
+    private String observacionFlete;
+
+    // ========================================
+    // ESTADOS DEL PEDIDO
+    // ========================================
 
     // PENDIENTE, PREPARANDO, LISTO_RECOJO,
     // ENVIADO, ENTREGADO, CANCELADO
     @Column(nullable = false, length = 30)
     private String estadoPedido = "PENDIENTE";
 
-    // PENDIENTE, EN_REVISION, APROBADO, RECHAZADO
+    // PENDIENTE, EN_REVISION,
+    // APROBADO, RECHAZADO
     @Column(nullable = false, length = 30)
     private String estadoPago = "PENDIENTE";
 
@@ -74,13 +128,14 @@ public class Pedido {
     @Column(length = 20)
     private String metodoPago;
 
-    // DATOS DE PAGO
+    // ========================================
+    // DATOS DEL PAGO
+    // ========================================
 
-    // Campo anterior conservado por compatibilidad
+    // Campo conservado por compatibilidad.
     @Column(unique = true)
     private String referenciaPago;
 
-    // Numero declarado por el cliente
     @Column(length = 100)
     private String numeroOperacionPago;
 
@@ -91,14 +146,18 @@ public class Pedido {
     @Column(length = 500)
     private String observacionPago;
 
+    // ========================================
     // FECHAS
+    // ========================================
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime fechaPedido;
 
     private LocalDateTime fechaPago;
 
+    // ========================================
     // DETALLES DEL PEDIDO
+    // ========================================
 
     @OneToMany(
         mappedBy = "pedido",
@@ -107,27 +166,91 @@ public class Pedido {
     )
     private List<DetallePedido> detalles = new ArrayList<>();
 
+    // ========================================
+    // CONSTRUCTOR
+    // ========================================
+
     public Pedido() {
     }
 
+    // ========================================
+    // VALORES INICIALES
+    // ========================================
+
     @PrePersist
     public void prePersist() {
+
         if (fechaPedido == null) {
             fechaPedido = LocalDateTime.now();
         }
+
+        if (subtotal == null) {
+            subtotal = BigDecimal.ZERO;
+        }
+
+        if (costoEnvio == null) {
+            costoEnvio = BigDecimal.ZERO;
+        }
+
+        if (total == null) {
+            total = BigDecimal.ZERO;
+        }
+
+        if (estadoPedido == null) {
+            estadoPedido = "PENDIENTE";
+        }
+
+        if (estadoPago == null) {
+            estadoPago = "PENDIENTE";
+        }
+
+        if ("RECOJO".equalsIgnoreCase(metodoEntrega)) {
+
+            modalidadPagoFlete = "NO_APLICA";
+            estadoCotizacionFlete = "NO_APLICA";
+            costoEnvio = BigDecimal.ZERO;
+
+        } else {
+
+            if (modalidadPagoFlete == null) {
+                modalidadPagoFlete = "CONTRA_ENTREGA";
+            }
+
+            if (estadoCotizacionFlete == null) {
+                estadoCotizacionFlete = "PENDIENTE";
+            }
+        }
     }
 
+    // ========================================
+    // GESTION DE DETALLES
+    // ========================================
+
     public void agregarDetalle(DetallePedido detalle) {
+
+        if (detalle == null) {
+            throw new IllegalArgumentException(
+                "El detalle no puede ser nulo"
+            );
+        }
+
         detalles.add(detalle);
         detalle.setPedido(this);
     }
 
     public void eliminarDetalle(DetallePedido detalle) {
+
+        if (detalle == null) {
+            return;
+        }
+
         detalles.remove(detalle);
         detalle.setPedido(null);
     }
 
+    // ========================================
     // GETTERS Y SETTERS
+    // ========================================
 
     public Long getId() {
         return id;
@@ -141,7 +264,9 @@ public class Pedido {
         return tokenSeguimientoHash;
     }
 
-    public void setTokenSeguimientoHash(String tokenSeguimientoHash) {
+    public void setTokenSeguimientoHash(
+        String tokenSeguimientoHash
+    ) {
         this.tokenSeguimientoHash = tokenSeguimientoHash;
     }
 
@@ -241,6 +366,54 @@ public class Pedido {
         this.total = total;
     }
 
+    // ========================================
+    // NUEVOS GETTERS Y SETTERS DEL FLETE
+    // ========================================
+
+    public String getModalidadPagoFlete() {
+        return modalidadPagoFlete;
+    }
+
+    public void setModalidadPagoFlete(
+        String modalidadPagoFlete
+    ) {
+        this.modalidadPagoFlete = modalidadPagoFlete;
+    }
+
+    public String getEstadoCotizacionFlete() {
+        return estadoCotizacionFlete;
+    }
+
+    public void setEstadoCotizacionFlete(
+        String estadoCotizacionFlete
+    ) {
+        this.estadoCotizacionFlete = estadoCotizacionFlete;
+    }
+
+    public LocalDateTime getFechaCotizacionFlete() {
+        return fechaCotizacionFlete;
+    }
+
+    public void setFechaCotizacionFlete(
+        LocalDateTime fechaCotizacionFlete
+    ) {
+        this.fechaCotizacionFlete = fechaCotizacionFlete;
+    }
+
+    public String getObservacionFlete() {
+        return observacionFlete;
+    }
+
+    public void setObservacionFlete(
+        String observacionFlete
+    ) {
+        this.observacionFlete = observacionFlete;
+    }
+
+    // ========================================
+    // ESTADOS
+    // ========================================
+
     public String getEstadoPedido() {
         return estadoPedido;
     }
@@ -265,6 +438,10 @@ public class Pedido {
         this.metodoPago = metodoPago;
     }
 
+    // ========================================
+    // DATOS DEL PAGO
+    // ========================================
+
     public String getReferenciaPago() {
         return referenciaPago;
     }
@@ -277,7 +454,9 @@ public class Pedido {
         return numeroOperacionPago;
     }
 
-    public void setNumeroOperacionPago(String numeroOperacionPago) {
+    public void setNumeroOperacionPago(
+        String numeroOperacionPago
+    ) {
         this.numeroOperacionPago = numeroOperacionPago;
     }
 
@@ -285,7 +464,9 @@ public class Pedido {
         return fechaReportePago;
     }
 
-    public void setFechaReportePago(LocalDateTime fechaReportePago) {
+    public void setFechaReportePago(
+        LocalDateTime fechaReportePago
+    ) {
         this.fechaReportePago = fechaReportePago;
     }
 
@@ -294,7 +475,7 @@ public class Pedido {
     }
 
     public void setFechaVerificacionPago(
-            LocalDateTime fechaVerificacionPago
+        LocalDateTime fechaVerificacionPago
     ) {
         this.fechaVerificacionPago = fechaVerificacionPago;
     }
@@ -303,9 +484,15 @@ public class Pedido {
         return observacionPago;
     }
 
-    public void setObservacionPago(String observacionPago) {
+    public void setObservacionPago(
+        String observacionPago
+    ) {
         this.observacionPago = observacionPago;
     }
+
+    // ========================================
+    // FECHAS
+    // ========================================
 
     public LocalDateTime getFechaPedido() {
         return fechaPedido;
@@ -323,11 +510,17 @@ public class Pedido {
         this.fechaPago = fechaPago;
     }
 
+    // ========================================
+    // DETALLES
+    // ========================================
+
     public List<DetallePedido> getDetalles() {
         return detalles;
     }
 
-    public void setDetalles(List<DetallePedido> detalles) {
+    public void setDetalles(
+        List<DetallePedido> detalles
+    ) {
         this.detalles = detalles;
     }
 }
