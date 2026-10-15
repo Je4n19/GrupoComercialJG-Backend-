@@ -17,7 +17,10 @@ import java.util.Set;
 public class PagoAdminService {
 
     private static final Set<String> METODOS_HABILITADOS =
-            Set.of("YAPE", "PLIN");
+            Set.of("YAPE", "PLIN", "BCP", "BBVA");
+
+    private static final Set<String> ENTREGAS_HABILITADAS =
+            Set.of("RECOJO", "SHALOM", "EMTRAFESA", "OLVA");
 
     private final PedidoRepository pedidoRepository;
 
@@ -37,10 +40,24 @@ public class PagoAdminService {
     ) {
         Pedido pedido = buscar(pedidoId);
 
+        if ("CANCELADO".equals(pedido.getEstadoPedido())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede reportar un pago de un pedido cancelado"
+            );
+        }
+
         if (!METODOS_HABILITADOS.contains(pedido.getMetodoPago())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "El metodo de pago no esta habilitado"
+            );
+        }
+
+        if (!ENTREGAS_HABILITADAS.contains(pedido.getMetodoEntrega())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Metodo de entrega no habilitado"
             );
         }
 
@@ -53,24 +70,21 @@ public class PagoAdminService {
         }
 
         if (numeroOperacion == null
-                || numeroOperacion.isBlank()
-                || numeroOperacion.trim().length() > 100) {
+                || !numeroOperacion.trim().matches("[A-Za-z0-9-]{4,50}")) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Numero de operacion invalido"
             );
         }
 
-        if (!"RECOJO".equals(pedido.getMetodoEntrega())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Primero debe confirmarse el importe y las condiciones del envio"
-            );
-        }
+        // El pago reportado corresponde solo a los productos.
+        // El flete se paga directamente a la agencia.
+        // No se modifica subtotal, costoEnvio ni total.
 
         pedido.setNumeroOperacionPago(numeroOperacion.trim());
         pedido.setFechaReportePago(LocalDateTime.now());
         pedido.setFechaVerificacionPago(null);
+        pedido.setFechaPago(null);
         pedido.setObservacionPago(null);
         pedido.setEstadoPago("EN_REVISION");
 
@@ -81,6 +95,13 @@ public class PagoAdminService {
     public Pedido aprobar(Long pedidoId) {
         Pedido pedido = buscar(pedidoId);
 
+        if ("CANCELADO".equals(pedido.getEstadoPedido())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede aprobar un pago de un pedido cancelado"
+            );
+        }
+
         if (!"EN_REVISION".equals(pedido.getEstadoPago())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -88,10 +109,22 @@ public class PagoAdminService {
             );
         }
 
+        if (pedido.getNumeroOperacionPago() == null
+                || pedido.getNumeroOperacionPago().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El pedido no tiene un numero de operacion reportado"
+            );
+        }
+
+        LocalDateTime ahora = LocalDateTime.now();
+
         pedido.setEstadoPago("APROBADO");
-        pedido.setFechaPago(LocalDateTime.now());
-        pedido.setFechaVerificacionPago(LocalDateTime.now());
-        pedido.setObservacionPago("Abono verificado por administrador");
+        pedido.setFechaPago(ahora);
+        pedido.setFechaVerificacionPago(ahora);
+        pedido.setObservacionPago(
+                "Abono verificado por administrador"
+        );
 
         return pedidoRepository.save(pedido);
     }
