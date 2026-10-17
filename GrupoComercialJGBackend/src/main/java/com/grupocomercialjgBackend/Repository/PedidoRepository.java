@@ -1,10 +1,14 @@
-
 package com.grupocomercialjgBackend.Repository;
 
 import com.grupocomercialjgBackend.Model.Pedido;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -44,4 +48,9 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     Optional<Pedido> findByTokenSeguimientoHash(
             String tokenSeguimientoHash
     );
+
+    // Bloquear pedido mientras se aprueba el pago
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Pedido p WHERE p.id = :id")
+    Optional<Pedido> buscarPorIdConBloqueo(@Param("id") Long id);
 }
