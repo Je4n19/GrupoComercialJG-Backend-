@@ -7,6 +7,7 @@ import com.grupocomercialjgBackend.Repository.PedidoRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -16,33 +17,28 @@ import java.util.Set;
 @Service
 public class PagoClienteService {
 
-    // ========================================
-    // METODOS DE PAGO PERMITIDOS
-    // ========================================
-
     private static final Set<String> METODOS_PERMITIDOS =
             Set.of("YAPE", "PLIN", "BCP", "BBVA");
-
-    // ========================================
-    // METODOS DE ENTREGA PERMITIDOS
-    // ========================================
 
     private static final Set<String> METODOS_ENTREGA =
             Set.of("RECOJO", "SHALOM", "EMTRAFESA", "OLVA");
 
     private final PedidoRepository pedidoRepository;
     private final TokenPedidoService tokenPedidoService;
+    private final ComprobantePagoService comprobantePagoService;
 
     public PagoClienteService(
             PedidoRepository pedidoRepository,
-            TokenPedidoService tokenPedidoService
+            TokenPedidoService tokenPedidoService,
+            ComprobantePagoService comprobantePagoService
     ) {
         this.pedidoRepository = pedidoRepository;
         this.tokenPedidoService = tokenPedidoService;
+        this.comprobantePagoService = comprobantePagoService;
     }
 
     // ========================================
-    // REPORTAR PAGO DEL CLIENTE
+    // REPORTE ORIGINAL: COMPATIBILIDAD JSON
     // ========================================
 
     @Transactional
@@ -51,41 +47,77 @@ public class PagoClienteService {
             String tokenSeguimiento,
             String numeroOperacion
     ) {
+        return registrarPago(
+            pedidoId,
+            tokenSeguimiento,
+            numeroOperacion,
+            null
+        );
+    }
 
-        // ========================================
-        // VALIDAR IDENTIFICADOR
-        // ========================================
+    // ========================================
+    // NUEVO REPORTE CON COMPROBANTE
+    // ========================================
 
+    @Transactional
+    public Pedido reportarPagoConComprobante(
+            Long pedidoId,
+            String tokenSeguimiento,
+            String numeroOperacion,
+            MultipartFile comprobante
+    ) {
+
+        if (comprobante == null || comprobante.isEmpty()) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Debes adjuntar el comprobante de pago"
+            );
+        }
+
+        return registrarPago(
+            pedidoId,
+            tokenSeguimiento,
+            numeroOperacion,
+            comprobante
+        );
+    }
+
+    // ========================================
+    // VALIDAR Y REGISTRAR PAGO
+    // ========================================
+
+    private Pedido registrarPago(
+            Long pedidoId,
+            String tokenSeguimiento,
+            String numeroOperacion,
+            MultipartFile comprobante
+    ) {
+
+        // IDENTIFICADOR
         if (pedidoId == null || pedidoId <= 0) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Pedido inválido"
+                HttpStatus.BAD_REQUEST,
+                "Pedido inválido"
             );
         }
 
-        // ========================================
-        // VALIDAR TOKEN DE SEGUIMIENTO
-        // ========================================
-
-        if (tokenSeguimiento == null ||
-                tokenSeguimiento.isBlank()) {
+        // TOKEN PRIVADO
+        if (tokenSeguimiento == null
+                || tokenSeguimiento.isBlank()) {
 
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "El token de seguimiento es obligatorio"
+                HttpStatus.BAD_REQUEST,
+                "El token de seguimiento es obligatorio"
             );
         }
 
-        // ========================================
-        // VALIDAR NUMERO DE OPERACION
-        // ========================================
-
-        if (numeroOperacion == null ||
-                numeroOperacion.trim().isEmpty()) {
+        // NUMERO DE OPERACION
+        if (numeroOperacion == null
+                || numeroOperacion.trim().isEmpty()) {
 
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Ingresa el número de operación"
+                HttpStatus.BAD_REQUEST,
+                "Ingresa el número de operación"
             );
         }
 
@@ -93,125 +125,105 @@ public class PagoClienteService {
 
         if (!operacion.matches("[A-Za-z0-9-]{4,50}")) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "El número de operación debe tener entre 4 y 50 caracteres, usando letras, números o guiones"
+                HttpStatus.BAD_REQUEST,
+                "El número de operación debe tener entre "
+                + "4 y 50 caracteres, usando letras, "
+                + "números o guiones"
             );
         }
 
-        // ========================================
         // VERIFICAR ACCESO AL PEDIDO
-        // ========================================
-
         String hash = tokenPedidoService.generarHash(
-                tokenSeguimiento
+            tokenSeguimiento
         );
 
-        // El token privado debe corresponder
-        // exactamente al ID del pedido.
         Pedido pedido = pedidoRepository
-                .findByTokenSeguimientoHash(hash)
-                .filter(p -> p.getId().equals(pedidoId))
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Pedido no encontrado o acceso inválido"
-                ));
+            .findByTokenSeguimientoHash(hash)
+            .filter(p -> p.getId().equals(pedidoId))
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Pedido no encontrado o acceso inválido"
+            ));
 
-        // ========================================
         // VALIDAR METODO DE PAGO
-        // ========================================
-
         String metodoPago = normalizar(
-                pedido.getMetodoPago()
+            pedido.getMetodoPago()
         );
 
         if (!METODOS_PERMITIDOS.contains(metodoPago)) {
-
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "El método de pago no admite reporte manual"
+                HttpStatus.BAD_REQUEST,
+                "El método de pago no admite reporte manual"
             );
         }
 
-        // ========================================
         // VALIDAR METODO DE ENTREGA
-        // ========================================
-
         String metodoEntrega = normalizar(
-                pedido.getMetodoEntrega()
+            pedido.getMetodoEntrega()
         );
 
         if (!METODOS_ENTREGA.contains(metodoEntrega)) {
-
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "El método de entrega del pedido no es válido"
+                HttpStatus.BAD_REQUEST,
+                "El método de entrega del pedido no es válido"
             );
         }
 
-        // ========================================
-        // VALIDAR ESTADO DEL PEDIDO
-        // ========================================
-
+        // VALIDAR PEDIDO CANCELADO
         if ("CANCELADO".equals(
                 normalizar(pedido.getEstadoPedido())
         )) {
-
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "No se puede reportar un pago de un pedido cancelado"
+                HttpStatus.CONFLICT,
+                "No se puede reportar un pago "
+                + "de un pedido cancelado"
             );
         }
 
-        // ========================================
         // VALIDAR ESTADO DEL PAGO
-        // ========================================
-
         String estadoPago = normalizar(
-                pedido.getEstadoPago()
+            pedido.getEstadoPago()
         );
 
         if (!Set.of("PENDIENTE", "RECHAZADO")
                 .contains(estadoPago)) {
 
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Este pedido ya tiene un pago reportado o verificado"
+                HttpStatus.CONFLICT,
+                "Este pedido ya tiene un pago "
+                + "reportado o verificado"
             );
         }
 
-        // ========================================
-        // LOGICA DEL FLETE CONTRA ENTREGA
-        // ========================================
-
+        // FLETE CONTRA ENTREGA
         if (!"RECOJO".equals(metodoEntrega)) {
 
-            // SHALOM, EMTRAFESA Y OLVA:
-            //
-            // El cliente paga a J&G solamente
-            // el importe de sus productos.
-            //
-            // El flete se paga directamente
-            // a la agencia cuando recoge el pedido.
-            //
-            // No se necesita cotizar el flete
-            // para reportar el pago de productos.
-
             String modalidadFlete = normalizar(
-                    pedido.getModalidadPagoFlete()
+                pedido.getModalidadPagoFlete()
             );
 
-            // Compatibilidad con pedidos antiguos,
-            // que pueden tener este campo nulo.
             if (!modalidadFlete.isEmpty()
                     && !"CONTRA_ENTREGA".equals(
-                            modalidadFlete
+                        modalidadFlete
                     )) {
 
                 throw new ResponseStatusException(
-                        HttpStatus.CONFLICT,
-                        "La modalidad de pago del flete no es válida"
+                    HttpStatus.CONFLICT,
+                    "La modalidad de pago del flete "
+                    + "no es válida"
                 );
             }
+        }
+
+        // ========================================
+        // GUARDAR COMPROBANTE, SI FUE ADJUNTADO
+        // ========================================
+
+        if (comprobante != null) {
+            comprobantePagoService.guardar(
+                pedido.getId(),
+                comprobante
+            );
         }
 
         // ========================================
@@ -219,38 +231,27 @@ public class PagoClienteService {
         // ========================================
 
         pedido.setNumeroOperacionPago(operacion);
-
-        // Se conserva para compatibilidad
-        // con la estructura actual.
         pedido.setReferenciaPago(operacion);
 
-        // El pago queda pendiente de revisión
-        // hasta que J&G verifique el depósito.
+        // Reportar NO aprueba el pago.
         pedido.setEstadoPago("EN_REVISION");
 
         pedido.setFechaReportePago(
-                LocalDateTime.now()
+            LocalDateTime.now()
         );
 
         pedido.setFechaVerificacionPago(null);
         pedido.setFechaPago(null);
         pedido.setObservacionPago(null);
 
-        // No modificar subtotal, costoEnvio
-        // ni total del pedido.
-        //
-        // Reportar un pago no significa
-        // que el dinero ya fue recibido.
+        // No modificar subtotal, envío ni total.
+        // El stock se descuenta únicamente
+        // cuando el administrador aprueba.
 
         return pedidoRepository.save(pedido);
     }
 
-    // ========================================
-    // NORMALIZAR TEXTOS
-    // ========================================
-
     private String normalizar(String valor) {
-
         if (valor == null) {
             return "";
         }
