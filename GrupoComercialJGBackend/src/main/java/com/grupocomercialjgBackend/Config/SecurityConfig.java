@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
 import org.springframework.http.HttpMethod;
 
 import org.springframework.security.authentication.AuthenticationManager;
@@ -18,7 +17,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import org.springframework.security.web.SecurityFilterChain;
-
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
@@ -30,7 +28,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     // ========================================
-    // ENCRIPTACIÓN DE CONTRASEÑAS
+    // ENCRIPTACION DE CONTRASEÑAS
     // ========================================
 
     @Bean
@@ -39,7 +37,7 @@ public class SecurityConfig {
     }
 
     // ========================================
-    // ADMINISTRADOR DE AUTENTICACIÓN
+    // ADMINISTRADOR DE AUTENTICACION
     // ========================================
 
     @Bean
@@ -51,7 +49,7 @@ public class SecurityConfig {
     }
 
     // ========================================
-    // CONFIGURACIÓN DE SPRING SECURITY
+    // CONFIGURACION DE SPRING SECURITY
     // ========================================
 
     @Bean
@@ -65,18 +63,18 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults())
 
             // ========================================
-            // PROTECCIÓN CSRF
+            // PROTECCION CSRF
             // ========================================
 
             .csrf(csrf -> csrf
 
-                // Guardar el token CSRF en la sesión
+                // Guardar el token CSRF en la sesion
                 .csrfTokenRepository(
                     new HttpSessionCsrfTokenRepository()
                 )
 
                 // Procesar el token enviado por React
-                // en el encabezado X-CSRF-TOKEN
+                // mediante X-CSRF-TOKEN
                 .csrfTokenRequestHandler(
                     new CsrfTokenRequestAttributeHandler()
                 )
@@ -98,6 +96,14 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ====================================
+                // PERMITIR PROCESAMIENTO DE ERRORES
+                // ====================================
+
+                .requestMatchers(
+                    "/error"
+                ).permitAll()
+
+                // ====================================
                 // OBTENER TOKEN CSRF
                 // ====================================
 
@@ -107,7 +113,7 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ====================================
-                // CATÁLOGO PÚBLICO
+                // CATALOGO PUBLICO
                 // ====================================
 
                 .requestMatchers(
@@ -128,7 +134,7 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ====================================
-                // LOGIN PÚBLICO
+                // LOGIN PUBLICO
                 // ====================================
 
                 .requestMatchers(
@@ -147,7 +153,7 @@ public class SecurityConfig {
 
                 // ====================================
                 // REPORTAR PAGO SIN COMPROBANTE
-                // COMPATIBILIDAD CON VERSIÓN ANTERIOR
+                // COMPATIBILIDAD
                 // ====================================
 
                 .requestMatchers(
@@ -166,7 +172,7 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ====================================
-                // ADMINISTRACIÓN DE PAGOS
+                // ADMINISTRACION DE PAGOS
                 // SOLO ADMINISTRADORES
                 // ====================================
 
@@ -176,7 +182,7 @@ public class SecurityConfig {
                 ).hasRole("ADMIN")
 
                 // ====================================
-                // SESIÓN ADMINISTRATIVA
+                // SESION ADMINISTRATIVA
                 // ====================================
 
                 .requestMatchers(
@@ -185,8 +191,8 @@ public class SecurityConfig {
                 ).hasRole("ADMIN")
 
                 // ====================================
-                // GESTIÓN DE PEDIDOS
-                // POST /api/pedidos YA ES PÚBLICO
+                // GESTION DE PEDIDOS
+                // POST /api/pedidos YA ES PUBLICO
                 // ====================================
 
                 .requestMatchers(
@@ -202,7 +208,10 @@ public class SecurityConfig {
                     "/api/**"
                 ).hasRole("ADMIN")
 
-                // DENEGAR RUTAS NO AUTORIZADAS
+                // ====================================
+                // DENEGAR OTRAS RUTAS
+                // ====================================
+
                 .anyRequest()
                 .denyAll()
             )
@@ -213,14 +222,17 @@ public class SecurityConfig {
 
             .formLogin(form -> form.disable())
 
+            // ========================================
             // DESACTIVAR HTTP BASIC
+            // ========================================
+
             .httpBasic(basic -> basic.disable());
 
         return http.build();
     }
 
     // ========================================
-    // CONFIGURACIÓN CORS
+    // CONFIGURACION CORS
     // ========================================
 
     @Bean
@@ -246,7 +258,7 @@ public class SecurityConfig {
         ));
 
         // ====================================
-        // MÉTODOS HTTP PERMITIDOS
+        // METODOS HTTP PERMITIDOS
         // ====================================
 
         config.setAllowedMethods(List.of(
@@ -271,7 +283,7 @@ public class SecurityConfig {
         ));
 
         // ====================================
-        // ENCABEZADOS VISIBLES EN REACT
+        // ENCABEZADOS EXPUESTOS A REACT
         // ====================================
 
         config.setExposedHeaders(List.of(
@@ -280,12 +292,12 @@ public class SecurityConfig {
         ));
 
         // ====================================
-        // PERMITIR COOKIES DE SESIÓN
+        // PERMITIR COOKIES DE SESION
         // ====================================
 
         config.setAllowCredentials(true);
 
-        // Caché del preflight: 1 hora
+        // Cache del preflight: 1 hora
         config.setMaxAge(3600L);
 
         // ====================================
