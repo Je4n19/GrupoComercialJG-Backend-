@@ -70,6 +70,12 @@ public class SecurityConfig {
 
             .authorizeHttpRequests(auth -> auth
 
+                // Permitir solicitudes preflight de CORS
+                .requestMatchers(
+                    HttpMethod.OPTIONS,
+                    "/api/**"
+                ).permitAll()
+
                 // Obtener token CSRF públicamente
                 .requestMatchers(
                     HttpMethod.GET,
@@ -111,16 +117,12 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ========================================
-                // NUEVO: REPORTE DE PAGOS DEL CLIENTE
+                // REPORTE DE PAGOS DEL CLIENTE
                 // ========================================
 
-                // Permite reportar una operación usando
-                // el ID del pedido y su token privado.
-                //
-                // El controlador y servicio verifican
-                // que el token corresponda al pedido.
-                //
-                // CSRF permanece obligatorio.
+                // El controlador debe verificar el
+                // ID del pedido y su token privado.
+                // CSRF sigue siendo obligatorio.
 
                 .requestMatchers(
                     HttpMethod.POST,
@@ -130,9 +132,6 @@ public class SecurityConfig {
                 // ========================================
                 // GESTIÓN ADMINISTRATIVA DE PAGOS
                 // ========================================
-
-                // Solo ADMIN puede listar, aprobar
-                // o rechazar los pagos.
 
                 .requestMatchers(
                     "/api/admin/pagos",
@@ -152,9 +151,6 @@ public class SecurityConfig {
                 // CONSULTAS DE PEDIDOS - ADMIN
                 // ========================================
 
-                // La creación pública ya fue permitida
-                // anteriormente con POST /api/pedidos.
-
                 .requestMatchers(
                     "/api/pedidos",
                     "/api/pedidos/**"
@@ -172,10 +168,10 @@ public class SecurityConfig {
                 .denyAll()
             )
 
-            // No utilizar formulario de Spring Security
+            // Deshabilitar formulario de login
             .formLogin(form -> form.disable())
 
-            // No utilizar autenticación HTTP Basic
+            // Deshabilitar HTTP Basic
             .httpBasic(basic -> basic.disable());
 
         return http.build();
@@ -190,9 +186,10 @@ public class SecurityConfig {
 
         CorsConfiguration config = new CorsConfiguration();
 
-        // Frontend local y frontend en Vercel
+        // Dominios autorizados del frontend
         config.setAllowedOrigins(List.of(
             "http://localhost:5173",
+            "https://grupocomercialjg.vercel.app",
             "https://grupo-comercial-jg-frontend-two.vercel.app"
         ));
 
@@ -209,13 +206,22 @@ public class SecurityConfig {
         // Cabeceras permitidas
         config.setAllowedHeaders(List.of(
             "Content-Type",
-            "X-CSRF-TOKEN"
+            "X-CSRF-TOKEN",
+            "X-XSRF-TOKEN",
+            "Authorization",
+            "Accept"
+        ));
+
+        // Cabeceras que puede leer el frontend
+        config.setExposedHeaders(List.of(
+            "X-CSRF-TOKEN",
+            "X-XSRF-TOKEN"
         ));
 
         // Permitir cookies de sesión
         config.setAllowCredentials(true);
 
-        // Tiempo de caché de preflight
+        // Caché de solicitudes preflight
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source =
