@@ -7,6 +7,9 @@ import com.cloudinary.utils.ObjectUtils;
 import com.grupocomercialjgBackend.Model.ComprobantePago;
 import com.grupocomercialjgBackend.Repository.ComprobantePagoRepository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,6 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Map;
@@ -25,6 +29,9 @@ import java.util.UUID;
 
 @Service
 public class ComprobantePagoService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(ComprobantePagoService.class);
 
     private static final long MAX_BYTES = 5L * 1024 * 1024;
 
@@ -39,18 +46,27 @@ public class ComprobantePagoService {
         this.repository = repository;
     }
 
+    // ========================================
+    // COMPROBAR EXISTENCIA
+    // ========================================
+
     public boolean existe(Long pedidoId) {
         return repository.existsById(pedidoId);
     }
+
+    // ========================================
+    // GUARDAR COMPROBANTE EN CLOUDINARY
+    // ========================================
 
     public ComprobantePago guardar(
             Long pedidoId,
             MultipartFile archivo
     ) {
+
         if (pedidoId == null || pedidoId <= 0) {
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Pedido inválido"
+                "Pedido invalido"
             );
         }
 
@@ -80,6 +96,13 @@ public class ComprobantePagoService {
         try {
             contenido = archivo.getBytes();
         } catch (IOException ex) {
+
+            log.error(
+                "Error leyendo comprobante del pedido {}",
+                pedidoId,
+                ex
+            );
+
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "No se pudo leer el comprobante"
@@ -91,16 +114,28 @@ public class ComprobantePagoService {
         if (formato == null) {
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Solo se permiten imágenes JPG, PNG o WebP válidas"
+                "Solo se permiten imagenes JPG, PNG o WebP validas"
             );
         }
 
         String publicId = "jg/comprobantes/"
                 + UUID.randomUUID();
 
-        boolean subido = false;
+        String publicIdSubido = null;
+
+        // ========================================
+        // SUBIR IMAGEN PRIVADA A CLOUDINARY
+        // ========================================
 
         try {
+
+            log.info(
+                "Iniciando subida de comprobante. Pedido: {}, formato: {}, bytes: {}",
+                pedidoId,
+                formato,
+                contenido.length
+            );
+
             Map<?, ?> resultado = cloudinary.uploader().upload(
                 contenido,
                 ObjectUtils.asMap(
@@ -112,34 +147,65 @@ public class ComprobantePagoService {
             );
 
             Object idRespuesta = resultado.get("public_id");
+
+            if (idRespuesta != null) {
+                publicIdSubido = idRespuesta.toString();
+            }
+
             Object formatoRespuesta = resultado.get("format");
 
-            if (idRespuesta == null || formatoRespuesta == null) {
+            if (publicIdSubido == null
+                    || publicIdSubido.isBlank()
+                    || formatoRespuesta == null) {
+
                 throw new IllegalStateException(
-                    "Cloudinary no devolvió los datos del archivo"
+                    "Cloudinary no devolvio los metadatos esperados"
                 );
             }
 
-            subido = true;
+            log.info(
+                "Cloudinary confirmo la subida del comprobante. Pedido: {}",
+                pedidoId
+            );
+
+            // ========================================
+            // GUARDAR METADATOS EN MYSQL
+            // ========================================
 
             ComprobantePago comprobante = new ComprobantePago();
 
             comprobante.setPedidoId(pedidoId);
-            comprobante.setPublicId(idRespuesta.toString());
+            comprobante.setPublicId(publicIdSubido);
             comprobante.setFormato(formatoRespuesta.toString());
             comprobante.setNombreArchivo(
                 limpiarNombre(archivo.getOriginalFilename())
             );
             comprobante.setFechaSubida(LocalDateTime.now());
 
-            return repository.saveAndFlush(comprobante);
+            ComprobantePago guardado =
+                    repository.saveAndFlush(comprobante);
+
+            log.info(
+                "Comprobante registrado en MySQL. Pedido: {}",
+                pedidoId
+            );
+
+            return guardado;
 
         } catch (Exception ex) {
 
-            // Limpieza compensatoria si se subió la imagen
-            // pero falló el registro de sus metadatos.
-            if (subido) {
-                eliminarDeCloudinary(publicId);
+            // No registrar credenciales, tokens ni URLs firmadas.
+            log.error(
+                "Fallo al almacenar comprobante. Pedido: {}, tipo: {}, mensaje: {}",
+                pedidoId,
+                ex.getClass().getSimpleName(),
+                mensajeSeguro(ex)
+            );
+
+            // Limpieza compensatoria si Cloudinary confirmo
+            // la subida, pero despues fallo MySQL.
+            if (publicIdSubido != null) {
+                eliminarDeCloudinary(publicIdSubido);
             }
 
             if (ex instanceof ResponseStatusException rse) {
@@ -154,10 +220,18 @@ public class ComprobantePagoService {
         }
     }
 
+    // ========================================
+    // RESPUESTA PARA VISUALIZAR COMPROBANTE
+    // ========================================
+
     public record ImagenComprobante(
             byte[] contenido,
             String tipoContenido
     ) {}
+
+    // ========================================
+    // OBTENER COMPROBANTE PRIVADO
+    // ========================================
 
     public ImagenComprobante obtenerImagen(Long pedidoId) {
 
@@ -168,7 +242,8 @@ public class ComprobantePagoService {
             ));
 
         try {
-            long vencimiento = java.time.Instant.now()
+
+            long vencimiento = Instant.now()
                     .plusSeconds(60)
                     .getEpochSecond();
 
@@ -199,9 +274,16 @@ public class ComprobantePagoService {
             );
 
             if (respuesta.statusCode() != 200) {
+
+                log.error(
+                    "Cloudinary devolvio HTTP {} al recuperar comprobante del pedido {}",
+                    respuesta.statusCode(),
+                    pedidoId
+                );
+
                 throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Cloudinary no permitió recuperar la imagen"
+                    "Cloudinary no permitio recuperar la imagen"
                 );
             }
 
@@ -213,7 +295,7 @@ public class ComprobantePagoService {
 
                 throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "El comprobante recibido no es válido"
+                    "El comprobante recibido no es valido"
                 );
             }
 
@@ -222,7 +304,7 @@ public class ComprobantePagoService {
             if (formato == null) {
                 throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Cloudinary no devolvió una imagen válida"
+                    "Cloudinary no devolvio una imagen valida"
                 );
             }
 
@@ -237,7 +319,16 @@ public class ComprobantePagoService {
 
         } catch (ResponseStatusException ex) {
             throw ex;
+
         } catch (Exception ex) {
+
+            log.error(
+                "Fallo al recuperar comprobante. Pedido: {}, tipo: {}, mensaje: {}",
+                pedidoId,
+                ex.getClass().getSimpleName(),
+                mensajeSeguro(ex)
+            );
+
             throw new ResponseStatusException(
                 HttpStatus.BAD_GATEWAY,
                 "No se pudo recuperar el comprobante",
@@ -246,8 +337,14 @@ public class ComprobantePagoService {
         }
     }
 
+    // ========================================
+    // ELIMINAR IMAGEN DE CLOUDINARY
+    // ========================================
+
     private void eliminarDeCloudinary(String publicId) {
+
         try {
+
             cloudinary.uploader().destroy(
                 publicId,
                 ObjectUtils.asMap(
@@ -256,11 +353,23 @@ public class ComprobantePagoService {
                     "invalidate", true
                 )
             );
-        } catch (Exception ignored) {
-            // Se debe revisar manualmente si queda un
-            // archivo huérfano en Cloudinary.
+
+            log.info(
+                "Limpieza de comprobante solicitada a Cloudinary"
+            );
+
+        } catch (Exception ex) {
+
+            log.error(
+                "No se pudo limpiar el comprobante en Cloudinary. Tipo: {}",
+                ex.getClass().getSimpleName()
+            );
         }
     }
+
+    // ========================================
+    // IDENTIFICAR FORMATO REAL
+    // ========================================
 
     private String detectarFormato(byte[] datos) {
 
@@ -273,6 +382,7 @@ public class ComprobantePagoService {
                 && (datos[0] & 0xFF) == 0xFF
                 && (datos[1] & 0xFF) == 0xD8
                 && (datos[2] & 0xFF) == 0xFF) {
+
             return "jpg";
         }
 
@@ -286,6 +396,7 @@ public class ComprobantePagoService {
                     Arrays.copyOf(datos, 8),
                     firmaPng
                 )) {
+
             return "png";
         }
 
@@ -299,11 +410,16 @@ public class ComprobantePagoService {
                 && datos[9] == 'E'
                 && datos[10] == 'B'
                 && datos[11] == 'P') {
+
             return "webp";
         }
 
         return null;
     }
+
+    // ========================================
+    // LIMPIAR NOMBRE DEL ARCHIVO
+    // ========================================
 
     private String limpiarNombre(String nombre) {
 
@@ -318,7 +434,8 @@ public class ComprobantePagoService {
         );
 
         limpio = limpio.replaceAll(
-            "[^A-Za-z0-9._-]", "_"
+            "[^A-Za-z0-9._-]",
+            "_"
         );
 
         if (limpio.length() > 200) {
@@ -326,5 +443,20 @@ public class ComprobantePagoService {
         }
 
         return limpio;
+    }
+
+    // ========================================
+    // MENSAJE DE DIAGNOSTICO SEGURO
+    // ========================================
+
+    private String mensajeSeguro(Exception ex) {
+
+        if (ex instanceof ResponseStatusException rse) {
+            return rse.getStatusCode().toString();
+        }
+
+        // No exponer mensajes de proveedores externos:
+        // podrian contener URLs, tokens o credenciales.
+        return "Consultar el tipo de excepcion";
     }
 }
