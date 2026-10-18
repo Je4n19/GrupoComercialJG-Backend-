@@ -95,12 +95,12 @@ public class ComprobantePagoService {
 
         try {
             contenido = archivo.getBytes();
+
         } catch (IOException ex) {
 
             log.error(
                 "Error leyendo comprobante del pedido {}",
-                pedidoId,
-                ex
+                pedidoId
             );
 
             throw new ResponseStatusException(
@@ -123,11 +123,11 @@ public class ComprobantePagoService {
 
         String publicIdSubido = null;
 
-        // ========================================
-        // SUBIR IMAGEN PRIVADA A CLOUDINARY
-        // ========================================
-
         try {
+
+            // ========================================
+            // SUBIR IMAGEN PRIVADA A CLOUDINARY
+            // ========================================
 
             log.info(
                 "Iniciando subida de comprobante. Pedido: {}, formato: {}, bytes: {}",
@@ -194,16 +194,31 @@ public class ComprobantePagoService {
 
         } catch (Exception ex) {
 
-            // No registrar credenciales, tokens ni URLs firmadas.
+            // ========================================
+            // DIAGNOSTICAR ERROR SIN MOSTRAR SECRETOS
+            // ========================================
+
+            Throwable causaRaiz = ex;
+
+            int profundidad = 0;
+
+            while (causaRaiz.getCause() != null
+                    && causaRaiz.getCause() != causaRaiz
+                    && profundidad < 10) {
+
+                causaRaiz = causaRaiz.getCause();
+                profundidad++;
+            }
+
             log.error(
-                "Fallo al almacenar comprobante. Pedido: {}, tipo: {}, mensaje: {}",
+                "Error Cloudinary/BD. Pedido: {}, excepcion: {}, causaRaiz: {}",
                 pedidoId,
-                ex.getClass().getSimpleName(),
-                mensajeSeguro(ex)
+                ex.getClass().getName(),
+                causaRaiz.getClass().getName()
             );
 
-            // Limpieza compensatoria si Cloudinary confirmo
-            // la subida, pero despues fallo MySQL.
+            // Si Cloudinary confirmo la subida,
+            // intentar eliminar la imagen si fallo MySQL.
             if (publicIdSubido != null) {
                 eliminarDeCloudinary(publicIdSubido);
             }
@@ -221,7 +236,7 @@ public class ComprobantePagoService {
     }
 
     // ========================================
-    // RESPUESTA PARA VISUALIZAR COMPROBANTE
+    // RESPUESTA DE IMAGEN
     // ========================================
 
     public record ImagenComprobante(
@@ -318,15 +333,15 @@ public class ComprobantePagoService {
             return new ImagenComprobante(contenido, tipo);
 
         } catch (ResponseStatusException ex) {
+
             throw ex;
 
         } catch (Exception ex) {
 
             log.error(
-                "Fallo al recuperar comprobante. Pedido: {}, tipo: {}, mensaje: {}",
+                "Error al recuperar comprobante. Pedido: {}, excepcion: {}",
                 pedidoId,
-                ex.getClass().getSimpleName(),
-                mensajeSeguro(ex)
+                ex.getClass().getName()
             );
 
             throw new ResponseStatusException(
@@ -361,14 +376,14 @@ public class ComprobantePagoService {
         } catch (Exception ex) {
 
             log.error(
-                "No se pudo limpiar el comprobante en Cloudinary. Tipo: {}",
-                ex.getClass().getSimpleName()
+                "No se pudo limpiar el comprobante en Cloudinary. Excepcion: {}",
+                ex.getClass().getName()
             );
         }
     }
 
     // ========================================
-    // IDENTIFICAR FORMATO REAL
+    // IDENTIFICAR FORMATO REAL DE LA IMAGEN
     // ========================================
 
     private String detectarFormato(byte[] datos) {
@@ -443,20 +458,5 @@ public class ComprobantePagoService {
         }
 
         return limpio;
-    }
-
-    // ========================================
-    // MENSAJE DE DIAGNOSTICO SEGURO
-    // ========================================
-
-    private String mensajeSeguro(Exception ex) {
-
-        if (ex instanceof ResponseStatusException rse) {
-            return rse.getStatusCode().toString();
-        }
-
-        // No exponer mensajes de proveedores externos:
-        // podrian contener URLs, tokens o credenciales.
-        return "Consultar el tipo de excepcion";
     }
 }
