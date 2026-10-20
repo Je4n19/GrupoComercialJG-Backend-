@@ -1,6 +1,7 @@
 
 package com.grupocomercialjgBackend.Controller;
 
+import com.grupocomercialjgBackend.DTO.ReclamacionAdminDTO;
 import com.grupocomercialjgBackend.Model.Reclamacion;
 import com.grupocomercialjgBackend.Service.ReclamacionService;
 
@@ -14,10 +15,6 @@ import java.util.List;
 public class AdminReclamacionController {
 
     private final ReclamacionService reclamacionService;
-
-    // ========================================
-    // CONSTRUCTOR
-    // ========================================
 
     public AdminReclamacionController(
             ReclamacionService reclamacionService
@@ -34,68 +31,81 @@ public class AdminReclamacionController {
     ) {}
 
     // ========================================
-    // LISTAR TODAS LAS RECLAMACIONES - ADMIN
+    // LISTAR TODAS LAS RECLAMACIONES
     // ========================================
 
     @GetMapping
-    public ResponseEntity<List<Reclamacion>> listar() {
+    public ResponseEntity<List<ReclamacionAdminDTO>> listar() {
 
-        List<Reclamacion> reclamaciones =
-                reclamacionService.listar();
+        List<ReclamacionAdminDTO> reclamaciones =
+                reclamacionService.listar()
+                        .stream()
+                        .map(ReclamacionAdminDTO::desdeEntidad)
+                        .toList();
 
         return ResponseEntity.ok(reclamaciones);
     }
 
     // ========================================
-    // FILTRAR RECLAMACIONES POR ESTADO - ADMIN
+    // FILTRAR POR ESTADO
     // ========================================
 
     @GetMapping("/estado/{estado}")
-    public ResponseEntity<List<Reclamacion>> listarPorEstado(
+    public ResponseEntity<List<ReclamacionAdminDTO>> listarPorEstado(
             @PathVariable String estado
     ) {
 
-        List<Reclamacion> reclamaciones =
-                reclamacionService.listarPorEstado(estado);
+        List<ReclamacionAdminDTO> reclamaciones =
+                reclamacionService.listarPorEstado(estado)
+                        .stream()
+                        .map(ReclamacionAdminDTO::desdeEntidad)
+                        .toList();
 
         return ResponseEntity.ok(reclamaciones);
     }
 
     // ========================================
-    // OBTENER RECLAMACION POR ID - ADMIN
+    // OBTENER RECLAMACION POR ID
     // ========================================
 
     @GetMapping("/{id}")
-    public ResponseEntity<Reclamacion> obtenerPorId(
+    public ResponseEntity<ReclamacionAdminDTO> obtenerPorId(
             @PathVariable Long id
     ) {
 
         Reclamacion reclamacion =
                 reclamacionService.obtenerPorId(id);
 
-        return ResponseEntity.ok(reclamacion);
+        return ResponseEntity.ok(
+                ReclamacionAdminDTO.desdeEntidad(reclamacion)
+        );
     }
 
     // ========================================
-    // REGISTRAR RESPUESTA - ADMIN
+    // REGISTRAR RESPUESTA DEL ADMINISTRADOR
     // ========================================
 
     @PatchMapping("/{id}/responder")
-    public ResponseEntity<Reclamacion> responder(
+    public ResponseEntity<ReclamacionAdminDTO> responder(
             @PathVariable Long id,
             @RequestBody RespuestaReclamacionRequest request
     ) {
 
-        if (request == null) {
+        if (request == null ||
+                request.respuesta() == null ||
+                request.respuesta().isBlank()) {
+
             return ResponseEntity.badRequest().build();
         }
 
         Reclamacion actualizada =
                 reclamacionService.responder(
                         id,
-                        request.respuesta()
+                        request.respuesta().trim()
                 );
 
-        return ResponseEntity.ok(actualizada);
+        return ResponseEntity.ok(
+                ReclamacionAdminDTO.desdeEntidad(actualizada)
+        );
     }
 }
