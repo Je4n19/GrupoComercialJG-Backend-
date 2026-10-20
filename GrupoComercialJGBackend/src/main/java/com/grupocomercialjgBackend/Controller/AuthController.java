@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfToken;
 
 import org.springframework.web.bind.annotation.*;
 
@@ -27,7 +28,9 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
 
-    public AuthController(AuthenticationManager authenticationManager) {
+    public AuthController(
+            AuthenticationManager authenticationManager
+    ) {
         this.authenticationManager = authenticationManager;
     }
 
@@ -39,6 +42,22 @@ public class AuthController {
             String username,
             String password
     ) {}
+
+    // ========================================
+    // OBTENER TOKEN CSRF
+    // ========================================
+
+    @GetMapping("/csrf")
+    public ResponseEntity<?> obtenerCsrf(
+            CsrfToken token
+    ) {
+
+        return ResponseEntity.ok(Map.of(
+                "token", token.getToken(),
+                "headerName", token.getHeaderName(),
+                "parameterName", token.getParameterName()
+        ));
+    }
 
     // ========================================
     // INICIAR SESION
@@ -57,16 +76,19 @@ public class AuthController {
                 datos.password().isBlank()) {
 
             return ResponseEntity.badRequest().body(
-                Map.of("mensaje", "Completa todos los campos")
+                    Map.of(
+                            "mensaje",
+                            "Completa todos los campos"
+                    )
             );
         }
 
         Authentication autenticacion =
                 authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                        datos.username().trim(),
-                        datos.password()
-                    )
+                        new UsernamePasswordAuthenticationToken(
+                                datos.username().trim(),
+                                datos.password()
+                        )
                 );
 
         // Crear una sesion si todavia no existe
@@ -86,15 +108,15 @@ public class AuthController {
 
         // Guardar la autenticacion en la sesion
         session.setAttribute(
-            HttpSessionSecurityContextRepository
-                    .SPRING_SECURITY_CONTEXT_KEY,
-            contexto
+                HttpSessionSecurityContextRepository
+                        .SPRING_SECURITY_CONTEXT_KEY,
+                contexto
         );
 
         return ResponseEntity.ok(Map.of(
-            "mensaje", "Inicio de sesion correcto",
-            "usuario", autenticacion.getName(),
-            "rol", "ADMIN"
+                "mensaje", "Inicio de sesion correcto",
+                "usuario", autenticacion.getName(),
+                "rol", "ADMIN"
         ));
     }
 
@@ -110,20 +132,21 @@ public class AuthController {
         if (autenticacion == null ||
                 !autenticacion.isAuthenticated() ||
                 autenticacion.getAuthorities().stream()
-                    .noneMatch(autoridad ->
-                        autoridad.getAuthority().equals("ROLE_ADMIN")
-                    )) {
+                        .noneMatch(autoridad ->
+                                autoridad.getAuthority()
+                                        .equals("ROLE_ADMIN")
+                        )) {
 
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
-                        "mensaje", "No autenticado"
+                            "mensaje", "No autenticado"
                     ));
         }
 
         return ResponseEntity.ok(Map.of(
-            "usuario", autenticacion.getName(),
-            "rol", "ADMIN"
+                "usuario", autenticacion.getName(),
+                "rol", "ADMIN"
         ));
     }
 
@@ -145,7 +168,8 @@ public class AuthController {
         SecurityContextHolder.clearContext();
 
         return ResponseEntity.ok(Map.of(
-            "mensaje", "Sesion cerrada correctamente"
+                "mensaje",
+                "Sesion cerrada correctamente"
         ));
     }
 
@@ -159,7 +183,8 @@ public class AuthController {
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
                 .body(Map.of(
-                    "mensaje", "Usuario o contraseña incorrectos"
+                        "mensaje",
+                        "Usuario o contraseña incorrectos"
                 ));
     }
 }
