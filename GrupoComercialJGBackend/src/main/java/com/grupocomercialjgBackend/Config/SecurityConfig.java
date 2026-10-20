@@ -152,6 +152,26 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ====================================
+                // REGISTRAR RECLAMACIONES
+                // ACCESO PUBLICO
+                // ====================================
+
+                .requestMatchers(
+                 HttpMethod.POST,
+                 "/api/reclamaciones"
+                 ).permitAll()
+
+                 // ====================================
+                 // ADMINISTRACION DE RECLAMACIONES
+                 // SOLO ADMINISTRADORES
+                 // ====================================
+
+                 .requestMatchers(
+                 "/api/admin/reclamaciones",
+                 "/api/admin/reclamaciones/**"
+                 ).hasRole("ADMIN")
+
+                // ====================================
                 // REPORTAR PAGO SIN COMPROBANTE
                 // COMPATIBILIDAD
                 // ====================================
