@@ -18,7 +18,6 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.csrf.CsrfToken;
 
 import org.springframework.web.bind.annotation.*;
 
@@ -42,22 +41,6 @@ public class AuthController {
             String username,
             String password
     ) {}
-
-    // ========================================
-    // OBTENER TOKEN CSRF
-    // ========================================
-
-    @GetMapping("/csrf")
-    public ResponseEntity<?> obtenerCsrf(
-            CsrfToken token
-    ) {
-
-        return ResponseEntity.ok(Map.of(
-                "token", token.getToken(),
-                "headerName", token.getHeaderName(),
-                "parameterName", token.getParameterName()
-        ));
-    }
 
     // ========================================
     // INICIAR SESION
@@ -140,7 +123,8 @@ public class AuthController {
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
-                            "mensaje", "No autenticado"
+                            "mensaje",
+                            "No autenticado"
                     ));
         }
 
